@@ -1,0 +1,45 @@
+export const colors = {
+  base: {
+    950: "#050505",
+    900: "#0F1115",
+    850: "#131619",
+    800: "#171A21",
+    700: "#20242D",
+    600: "#2A2F3D",
+    500: "#363C4E",
+    400: "#4A5168",
+    300: "#6B7280",
+    200: "#9CA3AF",
+    100: "#D1D5DB",
+    50: "#F3F4F6",
+  },
+  accent: {
+    blue: "#4DA3FF",
+    blueDim: "#2A6FCC",
+    blueMuted: "rgba(77, 163, 255, 0.15)",
+    purple: "#7C5CFF",
+    purpleDim: "#4A38B3",
+    purpleMuted: "rgba(124, 92, 255, 0.15)",
+    mint: "#4FFFB0",
+    mintDim: "#2BBF80",
+    mintMuted: "rgba(79, 255, 176, 0.12)",
+  },
+  semantic: {
+    danger: "#FF5C5C",
+    dangerMuted: "rgba(255, 92, 92, 0.15)",
+    warning: "#FFB84D",
+    warningMuted: "rgba(255, 184, 77, 0.12)",
+    success: "#4FFFB0",
+    successMuted: "rgba(79, 255, 176, 0.12)",
+  },
+  glass: {
+    light: "rgba(255, 255, 255, 0.05)",
+    medium: "rgba(255, 255, 255, 0.08)",
+    heavy: "rgba(255, 255, 255, 0.12)",
+    border: "rgba(255, 255, 255, 0.08)",
+    borderLight: "rgba(255, 255, 255, 0.12)",
+  },
+  transparent: "transparent",
+} as const;
+
+export type ColorKey = keyof typeof colors;
