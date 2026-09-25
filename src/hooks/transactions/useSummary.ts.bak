@@ -1,0 +1,82 @@
+import { useQuery } from "@tanstack/react-query";
+import { apiClient, ApiError } from "../../services/api";
+import { ENDPOINTS } from "../../services/api/endpoints";
+import { fetchTransactions } from "../../services/database/repositories/transactions";
+import type { SummaryResponse, Transaction } from "../../types";
+
+export const SUMMARY_KEY = ["transactions", "summary"] as const;
+
+function computeLocalSummary(transactions: Transaction[]): SummaryResponse {
+  const now = new Date();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+
+  const monthly = transactions.filter((t) => {
+    const d = new Date(t.date);
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+
+  const income = monthly
+    .filter((t) => t.type === "income")
+    .reduce((s, t) => s + t.amount, 0);
+
+  const expenses = monthly
+    .filter((t) => t.type === "expense")
+    .reduce((s, t) => s + t.amount, 0);
+
+  const byCategoryMap = new Map<string, { total: number; count: number }>();
+  for (const t of monthly) {
+    if (t.type === "expense") {
+      const prev = byCategoryMap.get(t.categoryId) ?? { total: 0, count: 0 };
+      byCategoryMap.set(t.categoryId, {
+        total: prev.total + t.amount,
+        count: prev.count + 1,
+      });
+    }
+  }
+
+  return {
+    income,
+    expenses,
+    balance: income - expenses,
+    count: monthly.length,
+    byCategory: Array.from(byCategoryMap.entries()).map(([categoryId, v]) => ({
+      categoryId,
+      ...v,
+    })),
+    recentTransactions: [],
+  };
+}
+
+async function loadSummary(): Promise<SummaryResponse> {
+  const now = new Date();
+
+  try {
+    const { data } = await apiClient.get<SummaryResponse>(ENDPOINTS.transactions.summary, {
+      params: { year: now.getFullYear(), month: now.getMonth() + 1 },
+    });
+    return data;
+  } catch (err) {
+    if (
+      err instanceof ApiError &&
+      (err.isNetwork || err.isUnauthorized)
+    ) {
+      // Offline or unauthenticated — compute from local SQLite
+      const local = await fetchTransactions(500, 0);
+      return computeLocalSummary(local);
+    }
+    // Fallback to local on any error
+    const local = await fetchTransactions(500, 0);
+    return computeLocalSummary(local);
+  }
+}
+
+export function useSummary() {
+  return useQuery({
+    queryKey: SUMMARY_KEY,
+    queryFn: loadSummary,
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 10,
+    retry: 0,
+  });
+}

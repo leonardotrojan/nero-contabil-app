@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   StyleSheet,
   Pressable,
   ScrollView,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -18,11 +19,13 @@ import { Typography } from "../../src/components/ui/Typography";
 import { Button } from "../../src/components/ui/Button";
 import { colors } from "../../src/theme/colors";
 import { radius, layout } from "../../src/theme/spacing";
-import { useTransactionStore } from "../../src/stores/transactionStore";
+import { useCreateTransaction } from "../../src/hooks/transactions/useCreateTransaction";
 import { useObjectiveStore } from "../../src/stores/objectiveStore";
 import { useHaptics } from "../../src/hooks/useHaptics";
 import { CATEGORIES } from "../../src/constants/categories";
 import { formatCurrency } from "../../src/utils/currency";
+import { CreditCardSetupSheet } from "../../src/components/creditCard/CreditCardSetupSheet";
+import { useCreditCard } from "../../src/hooks/creditCard/useCreditCard";
 import type { TransactionType, PaymentMethod } from "../../src/types";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
@@ -36,7 +39,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
 export default function AddScreen() {
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
-  const { addTransaction } = useTransactionStore();
+  const { mutateAsync: createTransaction, isPending } = useCreateTransaction();
   const { objectives, contribute } = useObjectiveStore();
 
   const [type, setType] = useState<TransactionType>("expense");
@@ -46,10 +49,36 @@ export default function AddScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
 
+  // Gate do crédito: sem ciclo configurado não há fatura a que atribuir a compra.
+  const { isConfigured: isCardConfigured } = useCreditCard();
+  const [isCardSheetOpen, setCardSheetOpen] = useState(false);
+  const [methodBeforeGate, setMethodBeforeGate] = useState<PaymentMethod>("pix");
+
+  const selectPaymentMethod = useCallback(
+    (next: PaymentMethod) => {
+      // Interrompe na seleção, não no submit: é o momento da intenção e não
+      // arrisca perder um formulário já preenchido.
+      if (next === "credit" && !isCardConfigured) {
+        setMethodBeforeGate(paymentMethod);
+        setPaymentMethod("credit");
+        setCardSheetOpen(true);
+        return;
+      }
+      setPaymentMethod(next);
+    },
+    [isCardConfigured, paymentMethod],
+  );
+
+  // Dispensar sem salvar devolve o método anterior — crédito sem ciclo não vale.
+  const handleGateDismiss = useCallback(() => {
+    setCardSheetOpen(false);
+    if (!isCardConfigured) setPaymentMethod(methodBeforeGate);
+  }, [isCardConfigured, methodBeforeGate]);
+
   const isObjectivesCategory = categoryId === "objectives";
 
   const availableCategories = CATEGORIES.filter(
-    (c) => c.type === type || c.type === "both"
+    (c) => !c.system && (c.type === type || c.type === "both")
   );
 
   const isValid =
@@ -57,7 +86,7 @@ export default function AddScreen() {
     !!description.trim() &&
     (!isObjectivesCategory || !!selectedObjectiveId);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const parsedAmount = parseFloat(amount.replace(",", "."));
     if (!isValid || !parsedAmount) return;
 
@@ -67,13 +96,11 @@ export default function AddScreen() {
       ? objectives.find((o) => o.id === selectedObjectiveId)
       : null;
 
-    addTransaction({
+    await createTransaction({
       amount: parsedAmount,
       type,
       categoryId,
-      description: objective
-        ? `Meta: ${objective.title}`
-        : description.trim(),
+      description: objective ? `Meta: ${objective.title}` : description.trim(),
       paymentMethod,
     });
 
@@ -165,7 +192,7 @@ export default function AddScreen() {
           </View>
         </Animated.View>
 
-        {/* Amount — Hero input */}
+        {/* Amount */}
         <Animated.View
           entering={FadeInDown.duration(400).delay(140)}
           style={styles.amountSection}
@@ -174,11 +201,7 @@ export default function AddScreen() {
             Valor
           </Typography>
           <View style={styles.amountHero}>
-            <Typography
-              variant="h1"
-              color="tertiary"
-              style={styles.currencyPrefix}
-            >
+            <Typography variant="h1" color="tertiary" style={styles.currencyPrefix}>
               R$
             </Typography>
             <TextInput
@@ -258,7 +281,7 @@ export default function AddScreen() {
           </ScrollView>
         </Animated.View>
 
-        {/* Objective selector — aparece apenas com categoria "Metas" */}
+        {/* Objective selector */}
         {isObjectivesCategory && (
           <Animated.View
             entering={FadeInDown.duration(350)}
@@ -342,9 +365,7 @@ export default function AddScreen() {
                         },
                       ]}
                     >
-                      {isSelected && (
-                        <View style={styles.radioDot} />
-                      )}
+                      {isSelected && <View style={styles.radioDot} />}
                     </View>
                   </Pressable>
                 );
@@ -366,7 +387,7 @@ export default function AddScreen() {
                   key={pm.value}
                   onPress={() => {
                     haptics.selection();
-                    setPaymentMethod(pm.value);
+                    selectPaymentMethod(pm.value);
                   }}
                   style={[
                     styles.paymentChip,
@@ -394,15 +415,21 @@ export default function AddScreen() {
         {/* Save */}
         <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.saveWrapper}>
           <Button
-            label="Salvar transação"
+            label={isPending ? "Salvando..." : "Salvar transação"}
             variant="primary"
             size="lg"
             fullWidth
             onPress={handleSave}
-            disabled={!isValid}
+            disabled={!isValid || isPending}
           />
         </Animated.View>
       </ScrollView>
+
+      <CreditCardSetupSheet
+        isOpen={isCardSheetOpen}
+        onClose={handleGateDismiss}
+        onSaved={() => setPaymentMethod("credit")}
+      />
     </View>
   );
 }
@@ -450,7 +477,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.base[800],
   },
 
-  /* Amount hero */
   amountSection: {
     gap: 12,
   },
@@ -482,7 +508,6 @@ const styles = StyleSheet.create({
     borderRadius: 1,
   },
 
-  /* Generic text input */
   field: {},
   fieldLabel: {
     marginBottom: 12,
@@ -503,7 +528,6 @@ const styles = StyleSheet.create({
     margin: 0,
   },
 
-  /* Chip rows */
   chipList: {
     gap: 8,
   },
@@ -532,7 +556,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.base[800],
   },
 
-  /* Objective selector */
   objectiveList: {
     gap: 10,
   },

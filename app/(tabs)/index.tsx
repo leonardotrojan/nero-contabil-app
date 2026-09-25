@@ -20,6 +20,8 @@ import { BlurView } from "expo-blur";
 import { Typography } from "../../src/components/ui/Typography";
 import { FloatingActionButton } from "../../src/components/ui/FloatingActionButton";
 import { HeroCard } from "../../src/modules/home/components/HeroCard";
+import { OpenInvoiceCard } from "../../src/modules/home/components/OpenInvoiceCard";
+import { PendingEventsCard } from "../../src/modules/home/components/PendingEventsCard";
 import { RadialChart } from "../../src/modules/home/components/RadialChart";
 import { QuickInsights } from "../../src/modules/home/components/QuickInsights";
 import { RecentActivity } from "../../src/modules/home/components/RecentActivity";
@@ -108,6 +110,16 @@ export default function HomeScreen() {
         <View style={styles.sections}>
           <View style={styles.section}>
             <HeroCard />
+          </View>
+
+          {/* Contrapeso do Hero: o que já foi gasto mas ainda não saiu da conta. */}
+          <View style={styles.section}>
+            <OpenInvoiceCard />
+          </View>
+
+          {/* Eventos fixos que venceram e esperam confirmação. */}
+          <View style={styles.section}>
+            <PendingEventsCard />
           </View>
 
           <View style={styles.section}>

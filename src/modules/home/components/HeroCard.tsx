@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { View, Pressable, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -8,32 +8,62 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  withRepeat,
   FadeIn,
+  interpolate,
+  Extrapolation,
 } from "react-native-reanimated";
 import { Typography } from "../../../components/ui/Typography";
 import { colors } from "../../../theme/colors";
 import { radius } from "../../../theme/spacing";
 import { shadows } from "../../../theme/shadows";
 import { springs } from "../../../theme/animations";
-import { useTransactionStore } from "../../../stores/transactionStore";
 import { useUIStore } from "../../../stores/uiStore";
 import { useHaptics } from "../../../hooks/useHaptics";
+import { useSummary } from "../../../hooks/transactions/useSummary";
 import { formatCurrency } from "../../../utils/currency";
 import { daysRemainingInMonth } from "../../../utils/date";
 
+const SkeletonBar = ({ width, height = 12 }: { width: number; height?: number }) => {
+  const opacity = useSharedValue(0.4);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(withTiming(1, { duration: 700 }), withTiming(0.4, { duration: 700 })),
+      -1,
+      false
+    );
+  }, []);
+
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          width,
+          height,
+          borderRadius: height / 2,
+          backgroundColor: colors.base[600],
+        },
+      ]}
+    />
+  );
+};
+
 export const HeroCard = React.memo(() => {
-  const { getTotalBalance, getMonthlyExpenses, getMonthlyIncome } = useTransactionStore();
   const { isBalanceVisible, toggleBalanceVisibility } = useUIStore();
   const haptics = useHaptics();
+  const { data: summary, isLoading } = useSummary();
 
-  const balance = getTotalBalance();
-  const expenses = getMonthlyExpenses();
-  const income = getMonthlyIncome();
+  const balance = summary?.balance ?? 0;
+  const expenses = summary?.expenses ?? 0;
+  const income = summary?.income ?? 0;
   const stabilityRatio = income > 0 ? Math.min(1 - expenses / income, 1) : 0;
   const daysLeft = daysRemainingInMonth();
 
   const balanceOpacity = useSharedValue(1);
-  const scale = useSharedValue(1);
   const stabilityWidth = useSharedValue(0);
 
   useEffect(() => {
@@ -95,7 +125,9 @@ export const HeroCard = React.memo(() => {
 
         {/* Balance */}
         <Animated.View style={[balanceStyle, styles.balanceRow]}>
-          {isBalanceVisible ? (
+          {isLoading ? (
+            <SkeletonBar width={180} height={44} />
+          ) : isBalanceVisible ? (
             <Typography variant="heroBalance" color="primary">
               {formatCurrency(balance)}
             </Typography>
@@ -135,18 +167,26 @@ export const HeroCard = React.memo(() => {
             <Typography variant="caption" color="tertiary">
               Entradas
             </Typography>
-            <Typography variant="amount" color="mint">
-              +{formatCurrency(income, true)}
-            </Typography>
+            {isLoading ? (
+              <SkeletonBar width={80} height={14} />
+            ) : (
+              <Typography variant="amount" color="mint">
+                +{formatCurrency(income, true)}
+              </Typography>
+            )}
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Typography variant="caption" color="tertiary">
               Saídas
             </Typography>
-            <Typography variant="amount" color="danger">
-              -{formatCurrency(expenses, true)}
-            </Typography>
+            {isLoading ? (
+              <SkeletonBar width={80} height={14} />
+            ) : (
+              <Typography variant="amount" color="danger">
+                -{formatCurrency(expenses, true)}
+              </Typography>
+            )}
           </View>
         </View>
       </View>
@@ -162,7 +202,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   gradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   glowOverlay: {
     borderRadius: radius["3xl"],

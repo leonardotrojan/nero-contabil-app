@@ -6,4 +6,6 @@ export interface Category {
   icon: string;
   color: string;
   type: TransactionType | "both";
+  /** Categoria interna: existe para renderizar, mas não é selecionável. */
+  system?: boolean;
 }

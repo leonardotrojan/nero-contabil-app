@@ -1,11 +1,11 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { View, StyleSheet } from "react-native";
-import Animated, { FadeIn, useSharedValue, withSpring } from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import Svg, { Circle, G } from "react-native-svg";
 import { Typography } from "../../../components/ui/Typography";
 import { Card } from "../../../components/ui/Card";
 import { colors } from "../../../theme/colors";
-import { useTransactionStore } from "../../../stores/transactionStore";
+import { useTransactions } from "../../../hooks/transactions/useTransactions";
 import { getCategoryById } from "../../../constants/categories";
 import { formatCurrency } from "../../../utils/currency";
 
@@ -14,31 +14,37 @@ const STROKE = 16;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
+interface Segment {
+  name: string;
+  color: string;
+  amount: number;
+}
+
 export const RadialChart = React.memo(() => {
-  const { transactions, getMonthlyExpenses } = useTransactionStore();
-  const totalExpenses = getMonthlyExpenses();
+  const { data: transactions = [] } = useTransactions();
 
   const now = new Date();
-  const currentMonthTransactions = transactions.filter((t) => {
+  const monthly = transactions.filter((t) => {
     const d = new Date(t.date);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return (
+      t.type === "expense" &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear()
+    );
   });
 
-  const categoryTotals = currentMonthTransactions
-    .filter((t) => t.type === "expense")
-    .reduce<Record<string, { amount: number; color: string; name: string }>>(
-      (acc, t) => {
-        const cat = getCategoryById(t.categoryId);
-        if (!acc[t.categoryId]) {
-          acc[t.categoryId] = { amount: 0, color: cat.color, name: cat.name };
-        }
-        acc[t.categoryId].amount += t.amount;
-        return acc;
-      },
-      {}
-    );
+  const totalExpenses = monthly.reduce((s, t) => s + t.amount, 0);
 
-  const segments = Object.values(categoryTotals)
+  const categoryTotals = monthly.reduce<Record<string, Segment>>((acc, t) => {
+    const cat = getCategoryById(t.categoryId);
+    if (!acc[t.categoryId]) {
+      acc[t.categoryId] = { amount: 0, color: cat.color, name: cat.name };
+    }
+    acc[t.categoryId].amount += t.amount;
+    return acc;
+  }, {});
+
+  const segments: Segment[] = Object.values(categoryTotals)
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 5);
 
@@ -61,7 +67,6 @@ export const RadialChart = React.memo(() => {
           <View style={styles.chartWrapper}>
             <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
               <G rotation="-90" origin={`${SIZE / 2}, ${SIZE / 2}`}>
-                {/* Background track */}
                 <Circle
                   cx={SIZE / 2}
                   cy={SIZE / 2}
@@ -93,7 +98,6 @@ export const RadialChart = React.memo(() => {
                   })}
               </G>
             </Svg>
-            {/* Center */}
             <View style={styles.chartCenter}>
               <Typography variant="captionMedium" color="tertiary">
                 Total
@@ -106,24 +110,30 @@ export const RadialChart = React.memo(() => {
 
           {/* Legend */}
           <View style={styles.legend}>
-            {segments.map((seg, i) => (
-              <View key={i} style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: seg.color }]} />
-                <View style={styles.legendText}>
-                  <Typography variant="captionMedium" color="secondary">
-                    {seg.name}
-                  </Typography>
-                  <Typography variant="caption" color="tertiary">
-                    {formatCurrency(seg.amount, true)}
+            {segments.length === 0 ? (
+              <Typography variant="caption" color="tertiary" align="center">
+                Nenhum gasto{"\n"}este mês
+              </Typography>
+            ) : (
+              segments.map((seg, i) => (
+                <View key={i} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: seg.color }]} />
+                  <View style={styles.legendText}>
+                    <Typography variant="captionMedium" color="secondary">
+                      {seg.name}
+                    </Typography>
+                    <Typography variant="caption" color="tertiary">
+                      {formatCurrency(seg.amount, true)}
+                    </Typography>
+                  </View>
+                  <Typography variant="captionMedium" color="tertiary">
+                    {totalExpenses > 0
+                      ? `${Math.round((seg.amount / totalExpenses) * 100)}%`
+                      : "0%"}
                   </Typography>
                 </View>
-                <Typography variant="captionMedium" color="tertiary">
-                  {totalExpenses > 0
-                    ? `${Math.round((seg.amount / totalExpenses) * 100)}%`
-                    : "0%"}
-                </Typography>
-              </View>
-            ))}
+              ))
+            )}
           </View>
         </View>
       </Card>

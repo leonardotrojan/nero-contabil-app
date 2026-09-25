@@ -1,0 +1,22 @@
+export const BASE_URL = "https://nero-contabil-api.onrender.com";
+
+export const ENDPOINTS = {
+  auth: {
+    login: "/auth/login",
+    register: "/auth/register",
+  },
+  transactions: {
+    list: "/transactions",
+    create: "/transactions",
+    summary: "/transactions/summary",
+    byId: (id: string) => `/transactions/${id}`,
+  },
+  objectives: {
+    list: "/objectives",
+    create: "/objectives",
+    byId: (id: string) => `/objectives/${id}`,
+  },
+  insights: {
+    list: "/insights",
+  },
+} as const;

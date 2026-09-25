@@ -5,6 +5,6 @@ module.exports = function (api) {
     presets: [
       ["babel-preset-expo", { jsxImportSource: "nativewind" }],
     ],
-    plugins: ["expo-router/babel"],
+    // expo-router/babel foi removido: desde o SDK 50 já vem embutido em babel-preset-expo.
   };
 };

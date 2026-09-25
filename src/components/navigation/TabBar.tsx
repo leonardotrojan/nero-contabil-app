@@ -9,7 +9,14 @@ import Animated, {
   interpolate,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { Tabs } from "expo-router";
+
+// expo-router 57 passou a embarcar seus próprios tipos do react-navigation.
+// Derivar de Tabs evita depender do pacote @react-navigation/bottom-tabs,
+// cujos tipos agora divergem, e de caminhos internos do expo-router.
+type TabBarProps = Parameters<
+  NonNullable<React.ComponentProps<typeof Tabs>["tabBar"]>
+>[0];
 import { colors } from "../../theme/colors";
 import { shadows } from "../../theme/shadows";
 import { springs, durations } from "../../theme/animations";
@@ -55,7 +62,7 @@ const TabItem = React.memo<TabItemProps>(({ name, isFocused, isAddButton, onPres
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
-    opacity: isAddButton ? 1 : withTiming(isFocused ? 1 : 0.45, { duration: durations.fast }),
+    opacity: isAddButton ? 1 : withTiming(isFocused ? 1 : 0.7, { duration: durations.fast }),
   }));
 
   const dotStyle = useAnimatedStyle(() => ({
@@ -78,7 +85,14 @@ const TabItem = React.memo<TabItemProps>(({ name, isFocused, isAddButton, onPres
   }
 
   return (
-    <Pressable onPress={handlePress} style={styles.tabItem} accessible accessibilityRole="tab">
+    <Pressable
+      onPress={handlePress}
+      style={styles.tabItem}
+      accessible
+      accessibilityRole="tab"
+      accessibilityLabel={TAB_LABELS[name] ?? name}
+      accessibilityState={{ selected: isFocused }}
+    >
       <Animated.View style={[styles.tabInner, animatedStyle]}>
         <Animated.Text
           style={[
@@ -96,7 +110,7 @@ const TabItem = React.memo<TabItemProps>(({ name, isFocused, isAddButton, onPres
 
 TabItem.displayName = "TabItem";
 
-export const TabBar = React.memo<BottomTabBarProps>(({ state, navigation }) => {
+export const TabBar = React.memo<TabBarProps>(({ state, navigation }) => {
   const insets = useSafeAreaInsets();
 
   return (
@@ -176,13 +190,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tabIcon: {
-    fontSize: 20,
-    color: colors.base[300],
-    lineHeight: 26,
+    fontSize: 22,
+    color: colors.base[200],
+    lineHeight: 28,
   },
   dot: {
-    width: 4,
-    height: 4,
+    width: 16,
+    height: 3,
     borderRadius: 2,
     backgroundColor: colors.accent.blue,
   },

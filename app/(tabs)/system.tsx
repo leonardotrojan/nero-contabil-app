@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -8,6 +8,10 @@ import { Card } from "../../src/components/ui/Card";
 import { Typography } from "../../src/components/ui/Typography";
 import { colors } from "../../src/theme/colors";
 import { layout, radius } from "../../src/theme/spacing";
+import { CreditCardSetupSheet } from "../../src/components/creditCard/CreditCardSetupSheet";
+import { RecurringRulesSheet } from "../../src/components/recurring/RecurringRulesSheet";
+import { useCreditCard } from "../../src/hooks/creditCard/useCreditCard";
+import { useRecurringRules } from "../../src/hooks/recurring/useRecurring";
 
 interface SettingRowProps {
   icon: string;
@@ -48,6 +52,10 @@ SettingRow.displayName = "SettingRow";
 
 export default function SystemScreen() {
   const insets = useSafeAreaInsets();
+  const { card, isConfigured } = useCreditCard();
+  const [isCardSheetOpen, setCardSheetOpen] = useState(false);
+  const { data: rules = [] } = useRecurringRules();
+  const [isRulesSheetOpen, setRulesSheetOpen] = useState(false);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.base[950] }]}>
@@ -94,6 +102,46 @@ export default function SystemScreen() {
           <SettingRow icon="📱" label="Dispositivos" index={1} />
           <View style={styles.divider} />
           <SettingRow icon="🔑" label="Alterar senha" index={2} />
+        </Card>
+
+        {/* Credit card cycle */}
+        <Card style={styles.sectionCard} padding={0}>
+          <View style={styles.sectionHeader}>
+            <Typography variant="label" color="tertiary">
+              Cartão de crédito
+            </Typography>
+          </View>
+          <SettingRow
+            icon="💳"
+            label="Ciclo da fatura"
+            value={
+              isConfigured && card
+                ? `fecha ${card.closingDay} · vence ${card.dueDay}`
+                : "Configurar"
+            }
+            onPress={() => setCardSheetOpen(true)}
+            index={0}
+          />
+        </Card>
+
+        {/* Recurring events */}
+        <Card style={styles.sectionCard} padding={0}>
+          <View style={styles.sectionHeader}>
+            <Typography variant="label" color="tertiary">
+              Eventos fixos
+            </Typography>
+          </View>
+          <SettingRow
+            icon="🔁"
+            label="Gastos e entradas fixas"
+            value={
+              rules.length === 0
+                ? "Configurar"
+                : `${rules.length} ${rules.length === 1 ? "evento" : "eventos"}`
+            }
+            onPress={() => setRulesSheetOpen(true)}
+            index={0}
+          />
         </Card>
 
         {/* Data */}
@@ -147,6 +195,16 @@ export default function SystemScreen() {
           </Typography>
         </View>
       </ScreenContainer>
+
+      <CreditCardSetupSheet
+        isOpen={isCardSheetOpen}
+        onClose={() => setCardSheetOpen(false)}
+      />
+
+      <RecurringRulesSheet
+        isOpen={isRulesSheetOpen}
+        onClose={() => setRulesSheetOpen(false)}
+      />
     </View>
   );
 }

@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback } from "react";
-import { View, Pressable, StyleSheet, Dimensions } from "react-native";
+import React, { useEffect, useCallback, useState } from "react";
+import { View, Pressable, StyleSheet, Dimensions, Modal } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
   useAnimatedStyle,
@@ -31,13 +31,22 @@ export const BottomSheet = React.memo<BottomSheetProps>(
     const translateY = useSharedValue(snapHeight);
     const backdropOpacity = useSharedValue(0);
 
+    // O sheet vive num Modal para escapar da hierarquia do navigator — sem
+    // isso a tab bar, que é irmã da tela, cobre o rodapé do sheet e nenhum
+    // zIndex resolve, porque são stacking contexts diferentes.
+    // isMounted segura o Modal aberto durante a animação de saída.
+    const [isMounted, setMounted] = useState(isOpen);
+
     useEffect(() => {
       if (isOpen) {
+        setMounted(true);
         translateY.value = withSpring(0, springs.gentle);
         backdropOpacity.value = withTiming(1, { duration: durations.normal });
       } else {
-        translateY.value = withSpring(snapHeight, springs.snappy);
         backdropOpacity.value = withTiming(0, { duration: durations.fast });
+        translateY.value = withSpring(snapHeight, springs.snappy, (finished) => {
+          if (finished) runOnJS(setMounted)(false);
+        });
       }
     }, [isOpen, snapHeight]);
 
@@ -70,8 +79,16 @@ export const BottomSheet = React.memo<BottomSheetProps>(
       opacity: backdropOpacity.value,
     }));
 
+    if (!isMounted) return null;
+
     return (
-      <>
+      <Modal
+        transparent
+        visible
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={dismiss}
+      >
         <AnimatedPressable
           style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
           pointerEvents={isOpen ? "auto" : "none"}
@@ -89,7 +106,7 @@ export const BottomSheet = React.memo<BottomSheetProps>(
             {children}
           </View>
         </Animated.View>
-      </>
+      </Modal>
     );
   }
 );

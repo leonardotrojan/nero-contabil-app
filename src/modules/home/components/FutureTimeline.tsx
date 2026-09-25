@@ -3,32 +3,16 @@ import { View, ScrollView, StyleSheet } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Typography } from "../../../components/ui/Typography";
 import { colors } from "../../../theme/colors";
-import { radius } from "../../../theme/spacing";
-
-interface TimelineEvent {
-  id: string;
-  label: string;
-  icon: string;
-  day: number;
-  amount: number;
-  type: "income" | "expense";
-}
-
-const MOCK_EVENTS: TimelineEvent[] = [
-  { id: "e1", label: "Spotify", icon: "🎵", day: 10, amount: 29.9, type: "expense" },
-  { id: "e2", label: "Aluguel", icon: "🏠", day: 15, amount: 1200, type: "expense" },
-  { id: "e3", label: "Salário", icon: "💼", day: 5, amount: 8500, type: "income" },
-  { id: "e4", label: "Netflix", icon: "🎬", day: 18, amount: 55.9, type: "expense" },
-  { id: "e5", label: "Freelance", icon: "💻", day: 20, amount: 1500, type: "income" },
-  { id: "e6", label: "Internet", icon: "📡", day: 22, amount: 99.9, type: "expense" },
-];
-
-const today = new Date().getDate();
+import { radius, spacing } from "../../../theme/spacing";
+import { useRecurringAgenda } from "../../../hooks/recurring/useRecurring";
+import { formatCurrency } from "../../../utils/currency";
 
 export const FutureTimeline = React.memo(() => {
-  const upcoming = MOCK_EVENTS.filter((e) => e.day >= today).sort(
-    (a, b) => a.day - b.day
-  );
+  const { upcoming } = useRecurringAgenda();
+
+  // Sem regras configuradas não há o que projetar; a seção some em vez de
+  // mostrar um esqueleto vazio.
+  if (upcoming.length === 0) return null;
 
   return (
     <Animated.View entering={FadeIn.duration(500).delay(350)} style={styles.section}>
@@ -48,13 +32,15 @@ export const FutureTimeline = React.memo(() => {
         decelerationRate="fast"
       >
         {upcoming.map((event) => {
-          const isToday = event.day === today;
-          const isPast = event.day < today;
+          const eventDate = new Date(event.date);
+          const day = eventDate.getDate();
+          const isToday = eventDate.toDateString() === new Date().toDateString();
+          const isPast = false;
           const isIncome = event.type === "income";
 
           return (
             <View
-              key={event.id}
+              key={`${event.ruleId}:${event.periodKey}`}
               style={[
                 styles.eventCard,
                 isToday && styles.todayCard,
@@ -72,7 +58,7 @@ export const FutureTimeline = React.memo(() => {
                       : colors.base[300],
                   }}
                 >
-                  DIA {event.day}
+                  DIA {day}
                 </Typography>
                 {isToday && (
                   <View style={styles.todayBadge}>
@@ -88,7 +74,7 @@ export const FutureTimeline = React.memo(() => {
               </Typography>
 
               <Typography variant="captionMedium" color="secondary" numberOfLines={1}>
-                {event.label}
+                {event.description}
               </Typography>
               <Typography
                 variant="amount"
@@ -97,7 +83,8 @@ export const FutureTimeline = React.memo(() => {
                   fontSize: 13,
                 }}
               >
-                {isIncome ? "+" : "-"}R$ {event.amount.toFixed(0)}
+                {isIncome ? "+" : "-"}
+                {formatCurrency(event.amount, true)}
               </Typography>
             </View>
           );

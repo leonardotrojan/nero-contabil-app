@@ -16,6 +16,8 @@ export const CATEGORIES: Category[] = [
   { id: "investment", name: "Investimento", icon: "📈", color: colors.accent.blue, type: "income" },
   { id: "objectives", name: "Metas", icon: "◎", color: colors.accent.purple, type: "expense" },
   { id: "other", name: "Outros", icon: "✦", color: colors.base[300], type: "both" },
+  // Espelha prisma/seed.ts. Usada só pelo custo consolidado de fatura.
+  { id: "invoice", name: "Fatura", icon: "💳", color: colors.accent.blue, type: "expense", system: true },
 ];
 
 export const getCategoryById = (id: string): Category =>

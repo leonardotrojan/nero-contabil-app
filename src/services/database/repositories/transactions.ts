@@ -1,5 +1,5 @@
 import { getDatabase } from "../index";
-import type { Transaction, CreateTransactionDTO } from "../../../types";
+import type { Transaction, CreateTransactionDTO, SyncStatus, ApiTransaction } from "../../../types";
 
 export async function insertTransaction(dto: CreateTransactionDTO): Promise<Transaction> {
   const db = await getDatabase();
@@ -16,16 +16,19 @@ export async function insertTransaction(dto: CreateTransactionDTO): Promise<Tran
     location: dto.location,
     paymentMethod: dto.paymentMethod,
     isRecurring: dto.isRecurring ?? false,
+    isInvoicePayment: false,
+    syncStatus: "pending",
     createdAt: now,
     updatedAt: now,
   };
 
   await db.runAsync(
     `INSERT INTO transactions
-      (id, amount, type, category_id, description, date, location, payment_method, is_recurring, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, remote_id, amount, type, category_id, description, date, location, payment_method, is_recurring, sync_status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       transaction.id,
+      null,
       transaction.amount,
       transaction.type,
       transaction.categoryId,
@@ -34,6 +37,7 @@ export async function insertTransaction(dto: CreateTransactionDTO): Promise<Tran
       transaction.location ?? null,
       transaction.paymentMethod,
       transaction.isRecurring ? 1 : 0,
+      "pending",
       transaction.createdAt,
       transaction.updatedAt,
     ]
@@ -42,13 +46,102 @@ export async function insertTransaction(dto: CreateTransactionDTO): Promise<Tran
   return transaction;
 }
 
-export async function fetchTransactions(limit = 50): Promise<Transaction[]> {
+export async function fetchTransactions(limit = 50, offset = 0): Promise<Transaction[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<Record<string, unknown>>(
-    "SELECT * FROM transactions ORDER BY date DESC LIMIT ?",
-    [limit]
+    "SELECT * FROM transactions ORDER BY date DESC LIMIT ? OFFSET ?",
+    [limit, offset]
   );
   return rows.map(mapRow);
+}
+
+export async function fetchPendingTransactions(): Promise<Transaction[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    "SELECT * FROM transactions WHERE sync_status = 'pending' ORDER BY created_at ASC"
+  );
+  return rows.map(mapRow);
+}
+
+export async function markAsSynced(localId: string, remoteId: string): Promise<void> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+  await db.runAsync(
+    "UPDATE transactions SET remote_id = ?, sync_status = 'synced', synced_at = ?, updated_at = ? WHERE id = ?",
+    [remoteId, now, now, localId]
+  );
+}
+
+export async function markSyncFailed(localId: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE transactions SET sync_status = 'failed' WHERE id = ?",
+    [localId]
+  );
+}
+
+export async function markPendingRetry(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE transactions SET sync_status = 'pending' WHERE sync_status = 'failed'"
+  );
+}
+
+export async function upsertFromRemote(remote: ApiTransaction): Promise<void> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+
+  const existing = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM transactions WHERE remote_id = ?",
+    [remote.id]
+  );
+
+  if (existing) {
+    await db.runAsync(
+      `UPDATE transactions SET
+        amount = ?, type = ?, category_id = ?, description = ?, date = ?,
+        location = ?, payment_method = ?, is_recurring = ?, is_invoice_payment = ?,
+        sync_status = 'synced', synced_at = ?, updated_at = ?
+       WHERE remote_id = ?`,
+      [
+        Number(remote.amount),
+        remote.type,
+        remote.categoryId,
+        remote.description,
+        remote.date,
+        remote.location ?? null,
+        remote.paymentMethod,
+        remote.isRecurring ? 1 : 0,
+        remote.isInvoicePayment ? 1 : 0,
+        now,
+        now,
+        remote.id,
+      ]
+    );
+  } else {
+    const localId = `r_${remote.id}`;
+    await db.runAsync(
+      `INSERT OR IGNORE INTO transactions
+        (id, remote_id, amount, type, category_id, description, date, location, payment_method, is_recurring, is_invoice_payment, sync_status, created_at, updated_at, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?, ?)`,
+      [
+        localId,
+        remote.id,
+        Number(remote.amount),
+        remote.type,
+        remote.categoryId,
+        remote.description,
+        remote.date,
+        remote.location ?? null,
+        remote.paymentMethod,
+        remote.isRecurring ? 1 : 0,
+        remote.isInvoicePayment ? 1 : 0,
+        remote.createdAt,
+        remote.updatedAt,
+        now,
+      ]
+    );
+  }
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
@@ -56,19 +149,35 @@ export async function deleteTransaction(id: string): Promise<void> {
   await db.runAsync("DELETE FROM transactions WHERE id = ?", [id]);
 }
 
+export async function deleteByRemoteId(remoteId: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("DELETE FROM transactions WHERE remote_id = ?", [remoteId]);
+}
+
+export async function getTransactionCount(): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM transactions"
+  );
+  return row?.count ?? 0;
+}
+
 function mapRow(row: Record<string, unknown>): Transaction {
   return {
     id: row.id as string,
+    remoteId: (row.remote_id as string) ?? undefined,
     amount: row.amount as number,
     type: row.type as Transaction["type"],
     categoryId: row.category_id as string,
     description: row.description as string,
     date: row.date as string,
-    location: row.location as string | undefined,
+    location: (row.location as string) ?? undefined,
     paymentMethod: row.payment_method as Transaction["paymentMethod"],
     isRecurring: (row.is_recurring as number) === 1,
+    isInvoicePayment: (row.is_invoice_payment as number) === 1,
+    syncStatus: (row.sync_status as SyncStatus) ?? "pending",
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
-    syncedAt: row.synced_at as string | undefined,
+    syncedAt: (row.synced_at as string) ?? undefined,
   };
 }

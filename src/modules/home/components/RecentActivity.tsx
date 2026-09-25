@@ -1,22 +1,54 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Pressable, StyleSheet } from "react-native";
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withRepeat,
+  withSequence,
+  withTiming,
 } from "react-native-reanimated";
 import { Typography } from "../../../components/ui/Typography";
 import { Card } from "../../../components/ui/Card";
 import { colors } from "../../../theme/colors";
 import { radius } from "../../../theme/spacing";
 import { springs } from "../../../theme/animations";
-import { useTransactionStore } from "../../../stores/transactionStore";
+import { useTransactions } from "../../../hooks/transactions/useTransactions";
 import { useHaptics } from "../../../hooks/useHaptics";
 import { getCategoryById } from "../../../constants/categories";
 import { formatCurrency } from "../../../utils/currency";
 import { formatDate } from "../../../utils/date";
 import type { Transaction } from "../../../types";
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+const SkeletonItem = ({ index }: { index: number }) => {
+  const opacity = useSharedValue(0.4);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(withTiming(1, { duration: 700 }), withTiming(0.4, { duration: 700 })),
+      -1,
+      false
+    );
+  }, []);
+
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <View style={styles.item}>
+      <Animated.View style={[style, styles.skeletonIcon]} />
+      <View style={styles.info}>
+        <Animated.View style={[style, { height: 14, width: 140, borderRadius: 7, backgroundColor: colors.base[600] }]} />
+        <Animated.View style={[style, { height: 10, width: 90, borderRadius: 5, backgroundColor: colors.base[700], marginTop: 6 }]} />
+      </View>
+      <Animated.View style={[style, { height: 14, width: 70, borderRadius: 7, backgroundColor: colors.base[600] }]} />
+    </View>
+  );
+};
+
+// ─── Activity Item ────────────────────────────────────────────────────────────
 
 interface ActivityItemProps {
   transaction: Transaction;
@@ -78,6 +110,14 @@ const ActivityItem = React.memo<ActivityItemProps>(({ transaction, index }) => {
             <Typography variant="caption" color="tertiary">
               {formatDate(transaction.date)}
             </Typography>
+            {transaction.syncStatus === "pending" && (
+              <>
+                <View style={styles.metaDot} />
+                <Typography variant="caption" style={{ color: colors.semantic.warning }}>
+                  ↑ sync
+                </Typography>
+              </>
+            )}
           </View>
         </View>
 
@@ -98,9 +138,11 @@ const ActivityItem = React.memo<ActivityItemProps>(({ transaction, index }) => {
 
 ActivityItem.displayName = "ActivityItem";
 
+// ─── RecentActivity ───────────────────────────────────────────────────────────
+
 export const RecentActivity = React.memo(() => {
-  const { getRecentTransactions } = useTransactionStore();
-  const recent = getRecentTransactions(5);
+  const { data: transactions = [], isLoading } = useTransactions();
+  const recent = transactions.slice(0, 5);
 
   return (
     <Card padding={0} style={styles.card}>
@@ -115,7 +157,16 @@ export const RecentActivity = React.memo(() => {
         </Pressable>
       </View>
 
-      {recent.length === 0 ? (
+      {isLoading ? (
+        <View>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <React.Fragment key={i}>
+              <SkeletonItem index={i} />
+              {i < 2 && <View style={styles.divider} />}
+            </React.Fragment>
+          ))}
+        </View>
+      ) : recent.length === 0 ? (
         <View style={styles.emptyState}>
           <Typography variant="body" style={{ fontSize: 28, textAlign: "center" }}>
             ◌
@@ -165,6 +216,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
+  },
+  skeletonIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.lg,
+    backgroundColor: colors.base[700],
     flexShrink: 0,
   },
   info: {
